@@ -1,4 +1,4 @@
-CourseRA-Compilers-stanford
+CourseRA
 ===========================
 
-programming assignment of Compilers on CourserRA by Stanford
+programming assignment on CourserRA by Stanford

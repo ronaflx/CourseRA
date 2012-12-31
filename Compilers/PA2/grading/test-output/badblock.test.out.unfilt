@@ -1,0 +1,2 @@
+"./badblock.test", line 4: syntax error at or near TYPEID = A
+Compilation halted due to lex and parse errors

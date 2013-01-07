@@ -1,4 +1,4 @@
-/*This Code is Submitted by ronaflx for Problem 1001 at 2013-01-07 13:00:42*/
+/*This Code is Submitted by ronaflx for Problem 1001 at 2013-01-07 13:26:22*/
 /*
 *  cool.y
 *              Parser definition for the COOL language.
@@ -141,6 +141,12 @@
         %type <expressions> expr_list 
         %type <expressions> actual_list
         %type <expression> expr
+        %type <expression> equality_expr
+        %type <expression> relational_expr
+        %type <expression> additive_expr
+        %type <expression> multiplicative_expr
+        %type <expression> unary_expr
+        %type <expression> primary_expr
     %type <expression> while_expr
     %type <expression> if_expr
         %type <cases> case_list
@@ -326,71 +332,106 @@
         {
                 $$ = typcase($2, $4);
         }
-        | NEW TYPEID
+    | equality_expr
+    {
+                $$ = $1;
+    }
+    | equality_expr error
+    {
+    }
+    ;
+    equality_expr
+    : relational_expr
         {
-                $$ = new_($2);
+                $$ = $1;
         }
-        | ISVOID expr
-        {
-                $$ = isvoid($2);
-        }
-        | expr '+' expr 
-        {
-                $$ = plus($1, $3);
-        }
-        | expr '-' expr
-        {
-                $$ = sub($1, $3);
-        }
-        | expr '*' expr
-        {
-                $$ = mul($1, $3);
-        }
-        | expr '/' expr
-        {
-                $$ = divide($1, $3);
-        }
-        | '~' expr %prec '~'
-        {
-                $$ = neg($2);
-        }
-        | expr '<' expr
-        {
-                $$ = lt($1, $3);
-        }
-        | expr LE expr
-        {
-                $$ = leq($1, $3);
-        }
-        | expr '=' expr
+        | relational_expr '=' relational_expr
         {
                 $$ = eq($1, $3);
         }
-        | NOT expr 
+    ;
+    relational_expr
+    : additive_expr
         {
+                $$ = $1;
+        }
+    | additive_expr LE additive_expr
+    {
+                $$ = leq($1, $3);
+    }
+    | additive_expr '<' additive_expr
+    {
+                $$ = lt($1, $3);
+    }
+    ;
+    additive_expr
+    : multiplicative_expr
+    {
+                $$ = $1;
+    }
+    | additive_expr '+' multiplicative_expr
+    {
+                $$ = plus($1, $3);
+    }
+    | additive_expr '-' multiplicative_expr
+    {
+                $$ = sub($1, $3);
+    }
+    ;
+    multiplicative_expr
+    : unary_expr
+    {
+                $$ = $1;
+        }
+        | multiplicative_expr '*' unary_expr
+        {
+                $$ = mul($1, $3);
+        }
+    | multiplicative_expr '/' unary_expr
+    {
+                $$ = divide($1, $3);
+    }
+    ;
+    unary_expr
+    : primary_expr
+    {
+                $$ = $1;
+    }
+    | NEW TYPEID
+    {
+                $$ = new_($2);
+    }
+    | ISVOID expr
+    {
+                $$ = isvoid($2);
+    }
+    | '~' expr %prec '~'
+    {
+                $$ = neg($2);
+    }
+    | NOT expr
+    {
                 $$ = comp($2);
-        }
-        | '(' expr ')'
-        {
-                $$ = $2;
-        }
-        | OBJECTID
-        {
+    }
+    ;
+    primary_expr
+    : OBJECTID
+    {
                 $$ = object($1);
-        }
-        | INT_CONST
-        {
+    }
+    | INT_CONST
+    {
                 $$ = int_const($1);
-        }
-        | STR_CONST
-        {
+    }
+    | STR_CONST
+    {
                 $$ = string_const($1);
-        }
-        | BOOL_CONST
-        {
+    }
+    | BOOL_CONST
+    {
                 $$ = bool_const($1);
-        }
-        ;
+    }
+    ;
     if_expr
         : IF expr THEN expr ELSE expr FI        /* if expression */
         {
@@ -459,4 +500,3 @@
 
                 if(omerrs>50) {fprintf(stdout, "More than 50 errors\n"); exit(1);}
         }
-

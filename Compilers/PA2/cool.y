@@ -1,3 +1,4 @@
+/*This Code is Submitted by ronaflx for Problem 1001 at 2013-01-07 13:00:42*/
 /*
 *  cool.y
 *              Parser definition for the COOL language.
@@ -41,13 +42,13 @@
     * (fictional) construct that matches a plus between two integer constants. 
     * (SUCH A RULE SHOULD NOT BE  PART OF YOUR PARSER):
     
-    plus_consts	: INT_CONST '+' INT_CONST 
+    plus_consts : INT_CONST '+' INT_CONST 
     
     * where INT_CONST is a terminal for an integer constant. Now, a correct
     * action for this rule that attaches the correct line number to plus_const
     * would look like the following:
     
-    plus_consts	: INT_CONST '+' INT_CONST 
+    plus_consts : INT_CONST '+' INT_CONST 
     {
       // Set the line number of the current non-terminal:
       // ***********************************************
@@ -81,7 +82,7 @@
     /************************************************************************/
     /*                DONT CHANGE ANYTHING IN THIS SECTION                  */
     
-    Program ast_root;	      /* the result of the parse  */
+    Program ast_root;         /* the result of the parse  */
     Classes parse_results;        /* for use in semantic analysis */
     int omerrs = 0;               /* number of errors in lexing and parsing */
     %}
@@ -134,298 +135,328 @@
     %type <program> program
     %type <classes> class_list
     %type <class_> class
-	/* add by ronaflx */
-	%type <formals> formal_list
-	%type <formal> formal
-	%type <expressions> expr_list 
-	%type <expressions> actual_list
-	%type <expression> expr
-	%type <cases> case_list
-	%type <case_> case_
-	%type <expression> let_
+        /* add by ronaflx */
+        %type <formals> formal_list
+        %type <formal> formal
+        %type <expressions> expr_list 
+        %type <expressions> actual_list
+        %type <expression> expr
+    %type <expression> while_expr
+    %type <expression> if_expr
+        %type <cases> case_list
+        %type <case_> case_
+        %type <expression> let_
     
     /* You will want to change the following line. */
     %type <features> dummy_feature_list
-    %type <feature> dummy_feature
+    %type <feature>  dummy_feature
     
     /* Precedence declarations go here. */
-	%left '<'
-	%right '='
-	%left '+' '-'
-	%left '*' '/'
-	%left '~'
+    %right ASSIGN
+        %left '<' '=' LE
+        %left '+' '-'
+        %left '*' '/'
 
     %%
     /* 
     Save the root of the abstract syntax tree in a global variable.
     */
     program
-	: class_list
-	{
-		@$ = @1;
-		ast_root = program($1);
-	}
+        : class_list
+        {
+                @$ = @1;
+                ast_root = program($1);
+        }
     ;
     
     class_list
-    : class			/* single class */
+    : class               /* single class */
     {
-		$$ = single_Classes($1);
-    	parse_results = $$;
-	}
-    | class_list class	/* several classes */
+                $$ = single_Classes($1);
+        parse_results = $$;
+        }
+    | class_list class  /* several classes */
     {
-		$$ = append_Classes($1, single_Classes($2)); 
-    	parse_results = $$;
-	}
+                $$ = append_Classes($1, single_Classes($2)); 
+        parse_results = $$;
+        }
+    | class_list error
+    {
+    }
     ;
     
     /* If no parent is specified, the class inherits from the Object class. */
     class
-	: CLASS TYPEID '{' dummy_feature_list '}' ';'
+        : CLASS TYPEID '{' dummy_feature_list '}' ';'
     {
-		$$ = class_($2, idtable.add_string("Object"), $4, stringtable.add_string(curr_filename));
-	}
+                $$ = class_($2, idtable.add_string("Object"), $4, stringtable.add_string(curr_filename));
+        }
     | CLASS TYPEID INHERITS TYPEID '{' dummy_feature_list '}' ';'
     {
-		$$ = class_($2, $4, $6, stringtable.add_string(curr_filename));
-	}
+                $$ = class_($2, $4, $6, stringtable.add_string(curr_filename));
+        }
+    | CLASS error
+    {
+    }
     ;
     
     /* Feature list may be empty, but no empty features in list. */
     dummy_feature_list
-	:		/* empty */
+        :              /* empty */
     {
-		$$ = nil_Features();
-	}
-	| dummy_feature
-	{
-		$$ = single_Features($1);
-	}
-	| dummy_feature_list dummy_feature
-	{
-		$$ = append_Features($1, single_Features($2));
-	}
-	;
+                $$ = nil_Features();
+        }
+        | dummy_feature
+        {
+                $$ = single_Features($1);
+        }
+        | dummy_feature_list dummy_feature
+        {
+                $$ = append_Features($1, single_Features($2));
+        }
+        ;
     
     /* add by ronaflx */
 
-	dummy_feature
-	: OBJECTID ':' TYPEID ';'	/* variable */
-	{
-		$$ = attr($1, $3, no_expr());
-	}
-	| OBJECTID ':' TYPEID ASSIGN expr ';'	/* variable with assignment */
-	{
-		$$ = attr($1, $3, $5);
-	}
-	| OBJECTID '(' formal_list ')' ':' TYPEID '{' expr '}' ';'	/* function */
-	{
-		$$ = method($1, $3, $6, $8);
-	}
-	;
+        dummy_feature
+        : OBJECTID ':' TYPEID ';'       /* variable */
+        {
+                $$ = attr($1, $3, no_expr());
+        }
+        | OBJECTID ':' TYPEID ASSIGN expr ';'   /* variable with assignment */
+        {
+                $$ = attr($1, $3, $5);
+        }
+        | OBJECTID '(' formal_list ')' ':' TYPEID '{' expr '}' ';'      /* function */
+        {
+                $$ = method($1, $3, $6, $8);
+        }
+        ;
 
-	/* 
-	 * Formal list may be empty, but no empty formals in list.
-	 * formals are splited by ','
-	 */
-	formal_list
-	:		/* empty */
-	{
-			$$ = nil_Formals();
-	}
-	| formal
-	{
-			$$ = single_Formals($1);
-	}
-	| formal_list ',' formal
-	{
-			$$ = append_Formals($1, single_Formals($3));
-	}
-	;
-	formal
-	: OBJECTID ':' TYPEID 
-	{
-			$$ = formal($1, $3);
-	}
-	;
+        /* 
+         * Formal list may be empty, but no empty formals in list.
+         * formals are splited by ','
+         */
+        formal_list
+        :              /* empty */
+        {
+                $$ = nil_Formals();
+        }
+        | formal
+        {
+                $$ = single_Formals($1);
+        }
+        | formal_list ',' formal
+        {
+                $$ = append_Formals($1, single_Formals($3));
+        }
+        ;
+        formal
+        : OBJECTID ':' TYPEID 
+        {
+                $$ = formal($1, $3);
+        }
+        ;
 
-	actual_list
-	:	/* empty */
-	{
-		$$ = nil_Expressions();
-	}
-	| expr
-	{
-		$$ = single_Expressions($1);
-	}
-	| actual_list ',' expr
-	{
-		$$ = append_Expressions($1, single_Expressions($3));
-	}
-	expr_list	
-	: expr ';'
-	{
-		$$ = single_Expressions($1);
-	}
-	| expr_list expr ';'
-	{
-		$$ = append_Expressions($1, single_Expressions($2));
-	}
-	;
+        actual_list
+        :       /* empty */
+        {
+                $$ = nil_Expressions();
+        }
+        | expr
+        {
+                $$ = single_Expressions($1);
+        }
+        | actual_list ',' expr
+        {
+                $$ = append_Expressions($1, single_Expressions($3));
+        }
+    ;
+        expr_list       
+        : expr ';'
+        {
+                $$ = single_Expressions($1);
+        }
+        | expr_list expr ';'
+        {
+                $$ = append_Expressions($1, single_Expressions($2));
+        }
+    | expr_list error ';'
+    {
+    }
+        ;
 
-	expr
-	: OBJECTID ASSIGN expr	/* assigment expression */
-	{
-		$$ = assign($1, $3);
-	}
-	| expr '@' TYPEID '.' OBJECTID '(' actual_list ')'	/* static member function */
-	{
-		$$ = static_dispatch($1, $3, $5, $7);
-	}
-	| expr '.' OBJECTID '(' actual_list ')'	/* call function */
-	{
-		$$ = dispatch($1, $3, $5);
-	}
-	| OBJECTID '(' actual_list ')'	/* call function */
-	{
-		$$ = dispatch(no_expr(), $1, $3);
-	}
-	| IF expr THEN expr ELSE expr FI	/* if expression */
-	{
-		$$ = cond($2, $4, $6);
-	}
-	| WHILE expr LOOP expr POOL
-	{
-		$$ = loop($2, $4);
-	}
-	| '{' expr_list '}'
-	{
-		$$ = block($2);
-	}
-	| LET let_
-	{
-		$$ = $2;
-	}
-	| CASE expr OF case_list ESAC
-	{
-		$$ = typcase($2, $4);
-	}
-	| NEW TYPEID
-	{
-		$$ = new_($2);
-	}
-	| ISVOID expr
-	{
-		$$ = isvoid($2);
-	}
-	| expr '+' expr 
-	{
-		$$ = plus($1, $3);
-	}
-	| expr '-' expr
-	{
-		$$ = sub($1, $3);
-	}
-	| expr '*' expr
-	{
-		$$ = mul($1, $3);
-	}
-	| expr '/' expr
-	{
-		$$ = divide($1, $3);
-	}
-	| '~' expr %prec '~'
-	{
-		$$ = neg($2);
-	}
-	| expr '<' expr
-	{
-		$$ = lt($1, $3);
-	}
-	| expr LE expr
-	{
-		$$ = leq($1, $3);
-	}
-	| expr '=' expr
-	{
-		$$ = eq($1, $3);
-	}
-	| NOT expr 
-	{
-		$$ = comp($2);
-	}
-	| '(' expr ')'
-	{
-		$$ = $2;
-	}
-	| OBJECTID
-	{
-		$$ = object($1);
-	}
-	| INT_CONST
-	{
-		$$ = int_const($1);
-	}
-	| STR_CONST
-	{
-		$$ = string_const($1);
-	}
-	| BOOL_CONST
-	{
-		$$ = bool_const($1);
-	}
-	;
-	case_list
-	: case_
-	{
-		$$ = single_Cases($1);
-	}
-	| case_list case_
-	{
-		$$ = append_Cases($1, single_Cases($2));
-	}
-	;
-	case_
-	: OBJECTID ':' TYPEID DARROW expr ';'
-	{
-		$$ = branch($1, $3, $5);
-	}
-	;
-	let_
-	: OBJECTID ':' TYPEID IN expr
-	{
-		$$ = let($1, $3, no_expr(), $5);
-	}
-	| OBJECTID ':' TYPEID ASSIGN expr IN expr
-	{
-		$$ = let($1, $3, $5, $7);
-	}
-	| OBJECTID ':' TYPEID ',' let_
-	{
-		$$ = let($1, $3, no_expr(), $5);
-	}
-	| OBJECTID ':' TYPEID ASSIGN expr ',' let_
-	{
-		$$ = let($1, $3, $5, $7);
-	}
-	;
+        expr
+        : OBJECTID ASSIGN expr  /* assigment expression */
+        {
+                $$ = assign($1, $3);
+        }
+        | expr '@' TYPEID '.' OBJECTID '(' actual_list ')'      /* static member function */
+        {
+                $$ = static_dispatch($1, $3, $5, $7);
+        }
+        | expr '.' OBJECTID '(' actual_list ')' /* call function */
+        {
+                $$ = dispatch($1, $3, $5);
+        }
+        | OBJECTID '(' actual_list ')'  /* call function */
+        {
+                $$ = dispatch(no_expr(), $1, $3);
+        }
+    | if_expr
+    {
+                $$ = $1;
+    }
+    | while_expr
+    {
+                $$ = $1;
+        }
+        | '{' expr_list '}'
+        {
+                $$ = block($2);
+        }
+    | '{' error '}'
+    {
+    }
+        | LET let_
+        {
+                $$ = $2;
+        }
+        | CASE expr OF case_list ESAC
+        {
+                $$ = typcase($2, $4);
+        }
+        | NEW TYPEID
+        {
+                $$ = new_($2);
+        }
+        | ISVOID expr
+        {
+                $$ = isvoid($2);
+        }
+        | expr '+' expr 
+        {
+                $$ = plus($1, $3);
+        }
+        | expr '-' expr
+        {
+                $$ = sub($1, $3);
+        }
+        | expr '*' expr
+        {
+                $$ = mul($1, $3);
+        }
+        | expr '/' expr
+        {
+                $$ = divide($1, $3);
+        }
+        | '~' expr %prec '~'
+        {
+                $$ = neg($2);
+        }
+        | expr '<' expr
+        {
+                $$ = lt($1, $3);
+        }
+        | expr LE expr
+        {
+                $$ = leq($1, $3);
+        }
+        | expr '=' expr
+        {
+                $$ = eq($1, $3);
+        }
+        | NOT expr 
+        {
+                $$ = comp($2);
+        }
+        | '(' expr ')'
+        {
+                $$ = $2;
+        }
+        | OBJECTID
+        {
+                $$ = object($1);
+        }
+        | INT_CONST
+        {
+                $$ = int_const($1);
+        }
+        | STR_CONST
+        {
+                $$ = string_const($1);
+        }
+        | BOOL_CONST
+        {
+                $$ = bool_const($1);
+        }
+        ;
+    if_expr
+        : IF expr THEN expr ELSE expr FI        /* if expression */
+        {
+                $$ = cond($2, $4, $6);
+        }
+    while_expr
+    : WHILE expr LOOP expr POOL                 /* while expression */
+        {
+                $$ = loop($2, $4);
+        }
+    ;
+        case_list
+        : case_
+        {
+                $$ = single_Cases($1);
+        }
+        | case_list case_
+        {
+                $$ = append_Cases($1, single_Cases($2));
+        }
+        ;
+        case_
+        : OBJECTID ':' TYPEID DARROW expr ';'
+        {
+                $$ = branch($1, $3, $5);
+        }
+    | case_list error
+    {
+    }
+        ;
+        let_
+        : OBJECTID ':' TYPEID IN expr
+        {
+                $$ = let($1, $3, no_expr(), $5);
+        }
+        | OBJECTID ':' TYPEID ASSIGN expr IN expr
+        {
+                $$ = let($1, $3, $5, $7);
+        }
+        | OBJECTID ':' TYPEID ',' let_
+        {
+                $$ = let($1, $3, no_expr(), $5);
+        }
+        | OBJECTID ':' TYPEID ASSIGN expr ',' let_
+        {
+                $$ = let($1, $3, $5, $7);
+        }
+    | error let_
+    {
+    }
+        ;
 
     /* end of grammar */
     %%
     
     /* This function is called automatically when Bison detects a parse error. */
     void yyerror(char *s)
-	{
-		extern int curr_lineno;
+        {
+                extern int curr_lineno;
+                /*fprintf(stderr, "\"%s\", line %d: %s at or near ", curr_filename, curr_lineno, s);*/
+                cerr << "\"" << curr_filename << "\", line " << curr_lineno << ": " \
+                                << s << " at or near ";
+                print_cool_token(yychar);
+                fprintf(stderr, "\n");
+                omerrs++;
 
-		cerr << "\"" << curr_filename << "\", line " << curr_lineno << ": " \
-				<< s << " at or near ";
-		print_cool_token(yychar);
-		cerr << endl;
-		omerrs++;
-
-		if(omerrs>50) {fprintf(stdout, "More than 50 errors\n"); exit(1);}
-	}
-
+                if(omerrs>50) {fprintf(stdout, "More than 50 errors\n"); exit(1);}
+        }
 

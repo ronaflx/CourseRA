@@ -1,4 +1,4 @@
-/*This Code is Submitted by ronaflx for Problem 1001 at 2013-01-07 13:26:22*/
+/*This Code is Submitted by justtest for Problem 1001 at 2013-01-07 15:48:19*/
 /*
 *  cool.y
 *              Parser definition for the COOL language.
@@ -159,9 +159,12 @@
     
     /* Precedence declarations go here. */
     %right ASSIGN
+    %right NOT
         %left '<' '=' LE
         %left '+' '-'
         %left '*' '/'
+    %right ISVOID
+    %right '~'
 
     %%
     /* 
@@ -197,13 +200,13 @@
     {
                 $$ = class_($2, idtable.add_string("Object"), $4, stringtable.add_string(curr_filename));
         }
+    | CLASS TYPEID '{' error '}' ';' {}
     | CLASS TYPEID INHERITS TYPEID '{' dummy_feature_list '}' ';'
     {
                 $$ = class_($2, $4, $6, stringtable.add_string(curr_filename));
         }
-    | CLASS error
-    {
-    }
+    | CLASS TYPEID INHERITS TYPEID '{' error '}' ';' {}
+    | CLASS error {}
     ;
     
     /* Feature list may be empty, but no empty features in list. */
@@ -220,6 +223,7 @@
         {
                 $$ = append_Features($1, single_Features($2));
         }
+    | dummy_feature_list error {}
         ;
     
     /* add by ronaflx */
@@ -233,10 +237,14 @@
         {
                 $$ = attr($1, $3, $5);
         }
+    | OBJECTID ':' error
+    {
+    }
         | OBJECTID '(' formal_list ')' ':' TYPEID '{' expr '}' ';'      /* function */
         {
                 $$ = method($1, $3, $6, $8);
         }
+        | OBJECTID '(' formal_list ')' ':' TYPEID '{' error '}' ';'     /* function */ {}
         ;
 
         /* 
@@ -287,9 +295,7 @@
         {
                 $$ = append_Expressions($1, single_Expressions($2));
         }
-    | expr_list error ';'
-    {
-    }
+    | expr_list error ';' {}
         ;
 
         expr
@@ -309,6 +315,10 @@
         {
                 $$ = dispatch(no_expr(), $1, $3);
         }
+        | CASE expr OF case_list ESAC
+        {
+                $$ = typcase($2, $4);
+        }
     | if_expr
     {
                 $$ = $1;
@@ -317,28 +327,15 @@
     {
                 $$ = $1;
         }
-        | '{' expr_list '}'
-        {
-                $$ = block($2);
-        }
-    | '{' error '}'
+    | NOT expr
     {
+                $$ = comp($2);
     }
-        | LET let_
-        {
-                $$ = $2;
-        }
-        | CASE expr OF case_list ESAC
-        {
-                $$ = typcase($2, $4);
-        }
     | equality_expr
     {
                 $$ = $1;
     }
-    | equality_expr error
-    {
-    }
+    | equality_expr error {}
     ;
     equality_expr
     : relational_expr
@@ -401,23 +398,23 @@
     {
                 $$ = new_($2);
     }
-    | ISVOID expr
+    | ISVOID primary_expr 
     {
                 $$ = isvoid($2);
     }
-    | '~' expr %prec '~'
+    | '~' primary_expr
     {
                 $$ = neg($2);
-    }
-    | NOT expr
-    {
-                $$ = comp($2);
     }
     ;
     primary_expr
     : OBJECTID
     {
                 $$ = object($1);
+    }
+    | '(' expr ')'
+    {
+                $$ = $2;
     }
     | INT_CONST
     {
@@ -431,18 +428,31 @@
     {
                 $$ = bool_const($1);
     }
+        | '{' expr_list '}'
+        {
+                $$ = block($2);
+        }
+    | '{' error '}' {}
+        | LET let_
+        {
+                $$ = $2;
+        }
     ;
+
     if_expr
         : IF expr THEN expr ELSE expr FI        /* if expression */
         {
                 $$ = cond($2, $4, $6);
         }
+    ;
+
     while_expr
     : WHILE expr LOOP expr POOL                 /* while expression */
         {
                 $$ = loop($2, $4);
         }
     ;
+
         case_list
         : case_
         {
@@ -452,15 +462,14 @@
         {
                 $$ = append_Cases($1, single_Cases($2));
         }
+    | case_list error {}
         ;
+
         case_
         : OBJECTID ':' TYPEID DARROW expr ';'
         {
                 $$ = branch($1, $3, $5);
         }
-    | case_list error
-    {
-    }
         ;
         let_
         : OBJECTID ':' TYPEID IN expr
@@ -479,9 +488,7 @@
         {
                 $$ = let($1, $3, $5, $7);
         }
-    | error let_
-    {
-    }
+    | error let_ {}
         ;
 
     /* end of grammar */
@@ -497,6 +504,5 @@
                 print_cool_token(yychar);
                 fprintf(stderr, "\n");
                 omerrs++;
-
                 if(omerrs>50) {fprintf(stdout, "More than 50 errors\n"); exit(1);}
         }

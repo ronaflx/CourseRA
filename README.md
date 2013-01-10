@@ -1,4 +1,6 @@
 CourseRA
 ===========================
-
-programming assignment on CourserRA by Stanford
+programming assignment on CourserRA
+current course list :
+Compilers@Stanford
+ComputingForDataAnalysis@JHBSPH

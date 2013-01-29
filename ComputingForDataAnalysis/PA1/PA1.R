@@ -2,31 +2,23 @@ x <- read.csv("hw1_data.csv", header = TRUE)
 classType <- sapply(x, class)
 nrows <- nrow(x)
 ncols <- ncol(x)
+Ozone <- x[, 1]
+
 # question 1
-print(names(x))
+names(x)
 # question 2
-print(x[1:2, ])
+x[1:2, ]
 # question 3
-print(nrows)
+nrows
 # question 4
-print(x[c(nrows - 1, nrows), ])
-Ozone = x[, 1]
+x[c(nrows - 1, nrows), ]
 # question 5
-print(Ozone[47])
+Ozone[47]
 # question 6
-bad = is.na(Ozone)
-validOzone <- Ozone[!bad]
-print(nrows - length(validOzone))
+sum(is.na(Ozone))
 # question 7
-print(mean(validOzone))
+mean(Ozone[complete.cases(Ozone)])
 # question 8
-OzoneGreater <- x$Ozone > 31 & !is.na(x$Ozone)
-TempEqual    <- x$Temp  > 90 & !is.na(x$Temp)
-notNa        <- !is.na(x$Solar.R)
-validBool    <- OzoneGreater & TempEqual & notNa
-solar = x$Solar.R[validBool]
-print(mean(solar))
-# question 9
-MonthEqualSix <- x$Month == 6
-TempValue = x$Temp[MonthEqualSix]
-print(mean(TempValue))
+mean(x[(complete.cases(x) & x$Ozone > 31 & x$Temp > 90), ]$Solar.R)
+# question 9 
+mean(x$Temp[x$Month == 6])

@@ -4,20 +4,16 @@ from counter import parser_counter
 class CKY:
     def __init__(self, counter, sentence):
         self.counter = counter
-        self.symb = counter.get_symb()
         self.sent = sentence
-        self.rule = counter.get_rule()
 
-        self.m = len(self.symb)
-        self.n = len(self.sent)
-        n = self.n
-        m = self.m
+        self.m = counter.symb_length
+        self.n = len(sentence)
 
-        self.dp = [[[0.0 for i in range(n)] for i in range(n)] for i in range(m)]
-        self.prev = [[[[-1, -1, -1] for i in range(n)] for i in range(n)] for i in range(m)]
+        self.dp = [[[0.0 for i in range(self.n)] for i in range(self.n)] for i in range(self.m)]
+        self.prev = [[[[-1, -1, -1] for i in range(self.n)] for i in range(self.n)] for i in range(self.m)]
 
     def write_tree(self, state, beg, end):
-        cur = self.symb[state]
+        cur = self.counter.symb[state]
         k, i, j = self.prev[state][beg][end]
         if beg == end:
             return [cur, self.sent[beg]]
@@ -27,21 +23,21 @@ class CKY:
     def solve(self):
         for j in range(self.m):
             for start in range(self.n):
-                i = self.counter.get_term_index(self.sent[start])
-                self.dp[j][start][start] = self.counter.unary_prob(j, i)
+                i = counter.get_term_index(self.sent[start])
+                self.dp[j][start][start] = counter.unary[j][i]
 
         for length in range(2, self.n + 1):
             for start in range(0, self.n - length + 1):
                 end = start + length - 1
                 for mid in range(start, end):
                     for k in range(self.m):
-                        for i, j, p in self.rule[k]:
+                        for i, j, p in self.counter.rule[k]:
                             p *= self.dp[i][start][mid] * self.dp[j][mid + 1][end]
                             if self.dp[k][start][end] < p:
                                 self.dp[k][start][end] = p
                                 self.prev[k][start][end] = mid, i, j
 
-        state = self.symb.index("SBARQ")
+        state = self.counter.start
         tree = self.write_tree(state, 0, self.n - 1)
         return json.dumps(tree)
 

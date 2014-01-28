@@ -11,4 +11,7 @@ ComputingForDataAnalysis@JHBSPH
 Natural Language Processing@Columbia
 
 Functional Programming Principles in Scala@Eole Polytechnique Federale de Lausanne
+
 Machine Learning@Stanford
+
+CS193P@Stanford

@@ -5,12 +5,14 @@
 - (int) match:(NSArray *)otherCards {
     int score = 0;
     if ([otherCards count] == 1) {
-        // if [otherCards count] == 0 return nil.
-        PlayingCard *otherCard = [otherCards firstObject];
-        if ([self.suit isEqualToString:otherCard.suit]) {
-            score = 1;
-        } else if (self.rank == otherCard.rank) {
-            score = 4;
+        id card = [otherCards firstObject];
+        if ([card isKindOfClass:[PlayingCard class]]) {
+            PlayingCard* otherCard = (PlayingCard *)card;
+            if ([self.suit isEqualToString:otherCard.suit]) {
+                score = 1;
+            } else if (self.rank == otherCard.rank) {
+                score = 4;
+            }
         }
     }
     return score;

@@ -44,6 +44,18 @@ Symbol get_real_type(Symbol sym, Expression e) {
   return sym == SELF_TYPE ? e->get_type() : sym;
 }
 
+// Macro for error report
+#define ECHO_ERR1(c, s0) classtable->semant_error(c) << s0 << ".\n"
+#define ECHO_ERR2(c, s0, s1) classtable->semant_error(c) << s0 << s1 << ".\n"
+#define ECHO_ERR3(c, s0, s1, s2) \
+  classtable->semant_error(c) << s0 << s1 << s2 << ".\n"
+#define ECHO_ERR4(c, s0, s1, s2, s3) \
+  classtable->semant_error(c) << s0 << s1 << s2 << s3 << ".\n"
+#define ECHO_ERR5(c, s0, s1, s2, s3, s4) \
+  classtable->semant_error(c) << s0 << s1 << s2 << s3 << s4 << ".\n"
+#define ECHO_ERR6(c, s0, s1, s2, s3, s4, s5) \
+  classtable->semant_error(c) << s0 << s1 << s2 << s3 << s4 << s5 << ".\n"
+
 //
 // Initializing the predefined symbols.
 //
@@ -80,7 +92,7 @@ static void initialize_constants(void) {
 
 ClassTable::ClassTable(Classes classes)
     : semant_errors(0), error_stream(cerr), classes(classes) {
-  sym_table = new SymbolTable<string, Entry>();
+  sym_table = new SymbolTable<Symbol, Entry>();
 }
 
 void ClassTable::install_basic_classes() {
@@ -225,11 +237,10 @@ ostream& ClassTable::semant_error() {
 void class__class::check_type(ClassTable* classtable, Class_ c) {
   classtable->sym_table->enterscope();
   ClassInfo::Symbols parents;
-  classtable->get_all_parents(name->get_string(), &parents);
+  classtable->get_all_parents(name, &parents);
   // Put parent's attr into scope.
   for (size_t i = 1; i < parents.size(); i++) {
-    const ClassInfo& class_info =
-        classtable->get_class_info(parents[i]->get_string());
+    const ClassInfo& class_info = classtable->get_class_info(parents[i]);
     for (ClassInfo::AttrTable::const_iterator i = class_info.attr_table.begin();
          i != class_info.attr_table.end(); ++i) {
       classtable->sym_table->addid(i->first, i->second);
@@ -249,53 +260,40 @@ void class__class::collect_feature(ClassInfo* class_info) const {
 
 void method_class::check_type(ClassTable* classtable, Class_ c) {
   classtable->sym_table->enterscope();
-  const char* return_type_name = return_type->get_string();
-  const char* method_name = name->get_string();
-  if (!classtable->find(return_type_name)) {
-    classtable->semant_error(c) << "Undefined return type " << return_type_name
-                                << "in method " << name << ".\n";
+  if (!classtable->find(return_type)) {
+    ECHO_ERR4(c, "Undefined return type ", return_type, "in method ", name);
   }
   pair<Symbol, Symbol> diff;
-  FUNC_OVERRIDE_TYPE func_error_type = classtable->is_override_func(
-      c->get_name()->get_string(), method_name, &diff);
+  FUNC_OVERRIDE_TYPE func_error_type =
+      classtable->is_override_func(c->get_name(), name, &diff);
   if (func_error_type == OVERRIDE_RETURN_TYPE ||
       func_error_type == OVERRIDE_PARAMS_TYPE) {
-    classtable->semant_error(c)
-        << "In redefined method " << name << ", parameter type " << diff.second
-        << " is different from original type " << diff.first << ".\n";
+    ECHO_ERR6(c, "In redefined method ", name, ", parameter type ", diff.second,
+              " is different from original type ", diff.first);
   } else if (func_error_type == OVERRIDE_NUMS_PARAMS_TYPE) {
-    classtable->semant_error(c) << "Incompatible number of formal "
-                                << "parameters in redefined method " << name
-                                << ".\n";
+    ECHO_ERR3(c, "Incompatible number of formal ",
+              "parameters in redefined method ", name);
   }
-  std::set<string> formal_names;
+  std::set<Symbol> formal_names;
   for (int i = formals->first(); formals->more(i); i = formals->next(i)) {
     formals->nth(i)->check_type(classtable, c);
-    const char* name_str = formals->nth(i)->get_name()->get_string();
-    if (formal_names.find(name_str) == formal_names.end()) {
-      formal_names.insert(name_str);
+    Symbol name = formals->nth(i)->get_name();
+    if (formal_names.find(name) == formal_names.end()) {
+      formal_names.insert(name);
     } else {
-      classtable->semant_error(c) << "Formal parameter " << name_str
-                                  << " is multiply defined.\n";
+      ECHO_ERR3(c, "Formal parameter ", name, " is multiply defined");
     }
   }
   expr->check_type(classtable, c);
 
   Symbol expr_type = get_real_type(expr->get_type(), c);
   Symbol real_return_type = get_real_type(return_type, c);
-  if (expr_type == No_type) {
-  } else if (return_type == SELF_TYPE) {
-    if (expr->get_type() != SELF_TYPE) {
-      classtable->semant_error(c) << "In redefined method " << name
-                                  << ", parameter type " << expr->get_type()
-                                  << " is different from original type "
-                                  << return_type << ".\n";
-    }
-  } else if (!classtable->is_sub_type_of(expr_type, real_return_type)) {
-    classtable->semant_error(c) << "In redefined method " << name
-                                << ", parameter type " << expr->get_type()
-                                << " is different from original type "
-                                << return_type << ".\n";
+  if (expr_type != No_type &&
+      ((return_type == SELF_TYPE && expr->get_type() != SELF_TYPE) ||
+       !classtable->is_sub_type_of(expr_type, real_return_type))) {
+    ECHO_ERR6(c, "In redefined method ", name, ", parameter type ",
+              expr->get_type(), " is different from original type ",
+              return_type);
   }
   classtable->sym_table->exitscope();
 }
@@ -306,61 +304,49 @@ void method_class::collect_feature(ClassInfo* class_info) const {
     formals_sym.push_back(formals->nth(i)->get_type());
   }
   class_info->func_table.insert(
-      make_pair(name->get_string(), make_pair(return_type, formals_sym)));
+      make_pair(name, make_pair(return_type, formals_sym)));
 }
 
 void attr_class::check_type(ClassTable* classtable, Class_ c) {
-  char* name_str = name->get_string();
   init->check_type(classtable, c);
   if (name == self) {
-    classtable->semant_error(c)
-        << "'self' cannot be the name of an attribute.\n";
-  } else if (classtable->is_override_attr(c->get_name()->get_string(),
-                                          name_str)) {
-    classtable->semant_error(c) << "Attribute " << name
-                                << " is an attribute of an inherited class.\n";
+    ECHO_ERR1(c, "'self' cannot be the name of an attribute");
+  } else if (classtable->is_override_attr(c->get_name(), name)) {
+    ECHO_ERR3(c, "Attribute ", name, " is an attribute of an inherited class");
   } else {
-    assert(classtable->sym_table->addid(name_str, type_decl));
+    assert(classtable->sym_table->addid(name, type_decl));
   }
 }
 
 void attr_class::collect_feature(ClassInfo* class_info) const {
-  class_info->attr_table.insert(make_pair(name->get_string(), type_decl));
+  class_info->attr_table.insert(make_pair(name, type_decl));
 }
 
 void formal_class::check_type(ClassTable* classtable, Class_ c) {
-  char* type_str = type_decl->get_string();
   if (name == self) {
-    classtable->semant_error(c)
-        << "self cannot be the name of a formal parameter.\n";
+    ECHO_ERR1(c, "self cannot be the name of a formal parameter");
   } else if (type_decl == SELF_TYPE) {
-    classtable->semant_error(c) << "Formal parameter " << name
-                                << " cannot have type SELF_TYPE.\n";
+    ECHO_ERR3(c, "Formal parameter ", name, " cannot have type SELF_TYPE");
   } else {
-    classtable->sym_table->addid(name->get_string(),
-                                 idtable.lookup_string(type_str));
+    classtable->sym_table->addid(name, type_decl);
   }
 }
 
 void assign_class::check_type(ClassTable* classtable, Class_ c) {
   expr->check_type(classtable, c);
-  Symbol name_type = classtable->sym_table->lookup(name->get_string());
+  Symbol name_type = classtable->sym_table->lookup(name);
   Symbol expr_type = expr->get_type();
   if (name == self) {
-    classtable->semant_error(c) << "Cannot assign to 'self'.\n";
+    ECHO_ERR1(c, "Cannot assign to 'self'");
   } else if (name_type == NULL) {
-    classtable->semant_error(c) << "Indentifier " << name_type
-                                << "don't exist.\n";
+    ECHO_ERR3(c, "Indentifier ", name_type, "don't exist");
   } else if (!classtable->is_sub_type_of(expr_type, name_type)) {
-    classtable->semant_error(c)
-        << "Type " << expr_type
-        << " of assigned expression does not conform to declared type "
-        << name_type << " of identifier " << name << ".\n";
+    ECHO_ERR6(c, "Type ", expr_type,
+              " of assigned expression does not conform to declared type ",
+              name_type, " of identifier ", name);
   }
   set_type(expr->get_type());
 }
-
-#define DISPATCH_TYPE_CHECK
 
 void static_dispatch_class::check_type(ClassTable* classtable, Class_ c) {
   expr->check_type(classtable, c);
@@ -374,12 +360,11 @@ void static_dispatch_class::check_type(ClassTable* classtable, Class_ c) {
 
   // Check FuncInfo
   const ClassInfo::FuncInfo& func_info =
-      classtable->get_func_info(type_name->get_string(), name->get_string());
+      classtable->get_func_info(type_name, name);
   if (func_info == ClassInfo::FuncInfo()) {
-    classtable->semant_error(c) << "Dispatch to undefined method " << name
-                                << ".\n";
+    ECHO_ERR2(c, "Dispatch to undefined method ", name);
   } else if (n != func_info.second.size()) {
-    classtable->semant_error(c) << "params don't match\n";
+    ECHO_ERR1(c, "params don't match");
   } else {
     for (size_t i = 0; i < n; i++) {
       Symbol formal_type = func_info.second[i];
@@ -387,10 +372,9 @@ void static_dispatch_class::check_type(ClassTable* classtable, Class_ c) {
       // TODO(ronaflx): A litter hack on evaluate-result here.
       // I don't want to rewrite again.
       if (!classtable->is_sub_type_of(actual_type, formal_type)) {
-        classtable->semant_error(c) << "In call of method " << name << ", type "
-                                    << actual_types[i] << " of parameter "
-                                    << "b does not conform to declared type "
-                                    << formal_type << ".\n";
+        ECHO_ERR6(c, "In call of method ", name, ", type ", actual_types[i],
+                  " of parameter b does not conform to declared type ",
+                  formal_type);
       }
     }
   }
@@ -399,10 +383,8 @@ void static_dispatch_class::check_type(ClassTable* classtable, Class_ c) {
 
   // Static dispatch tpye error.
   if (!classtable->is_sub_type_of(expr_type, turn_type)) {
-    classtable->semant_error(c)
-        << "Expression type " << expr->get_type()
-        << " does not conform to declared static dispatch type " << type_name
-        << ".\n";
+    ECHO_ERR4(c, "Expression type ", expr->get_type(),
+              " does not conform to declared static dispatch type ", type_name);
   }
 
   set_type(get_real_type(func_info.first, c));
@@ -420,13 +402,12 @@ void dispatch_class::check_type(ClassTable* classtable, Class_ c) {
 
   Sybmol expr_type = get_real_type(expr->get_type(), c);
   const ClassInfo::FuncInfo& func_info =
-      classtable->get_func_info(expr_type->get_string(), name->get_string());
+      classtable->get_func_info(expr_type, name);
   if (func_info == ClassInfo::FuncInfo()) {
-    classtable->semant_error(c) << "Dispatch to undefined method " << name
-                                << ".\n";
+    ECHO_ERR2(c, "Dispatch to undefined method ", name);
     set_type(Object);
   } else if (n != func_info.second.size()) {
-    classtable->semant_error(c) << "params don't match";
+    ECHO_ERR1(c, "params don't match");
     set_type(Object);
   } else {
     for (size_t i = 0; i < n; i++) {
@@ -435,10 +416,9 @@ void dispatch_class::check_type(ClassTable* classtable, Class_ c) {
       // TODO(ronaflx): A litter hack on evaluate-result here.
       // I don't want to rewrite again.
       if (!classtable->is_sub_type_of(actual_type, formal_type)) {
-        classtable->semant_error(c) << "In call of method " << name << ", type "
-                                    << actual_types[i] << " of parameter "
-                                    << "b does not conform to declared type "
-                                    << formal_type << ".\n";
+        ECHO_ERR6(c, "In call of method ", name, ", type ", actual_types[i],
+                  " of parameter b does not conform to declared type ",
+                  formal_type);
       }
     }
     set_type(get_real_type(func_info.first, expr));
@@ -456,8 +436,8 @@ void cond_class::check_type(ClassTable* classtable, Class_ c) {
   else_exp->check_type(classtable, c);
   classtable->sym_table->exitscope();
 
-  const char* then_class = then_exp->get_type()->get_string();
-  const char* else_class = else_exp->get_type()->get_string();
+  Symbol then_class = then_exp->get_type();
+  Symbol else_class = else_exp->get_type();
   Symbol lca_class = classtable->get_lca(then_class, else_class);
   set_type(lca_class);
 }
@@ -466,7 +446,7 @@ void loop_class::check_type(ClassTable* classtable, Class_ c) {
   pred->check_type(classtable, c);
   body->check_type(classtable, c);
   if (pred->get_type() != Bool) {
-    classtable->semant_error(c) << "Loop condition does not have type Bool\n";
+    ECHO_ERR1(c, "Loop condition does not have type Bool");
   }
   set_type(Object);
 }
@@ -483,8 +463,7 @@ void typcase_class::check_type(ClassTable* classtable, Class_ c) {
     if (types.find(type_decl) == types.end()) {
       types.insert(type_decl);
     } else {
-      classtable->semant_error(c) << "Duplicate branch " << curr_type
-                                  << " in case statement.\n";
+      ECHO_ERR3(c, "Duplicate branch ", curr_type, " in case statement");
     }
     if (common_type == NULL) {
       common_type = curr_type;
@@ -497,7 +476,7 @@ void typcase_class::check_type(ClassTable* classtable, Class_ c) {
 
 void branch_class::check_type(ClassTable* classtable, Class_ c) {
   classtable->sym_table->enterscope();
-  classtable->sym_table->addid(name->get_string(), type_decl);
+  classtable->sym_table->addid(name, type_decl);
   expr->check_type(classtable, c);
   classtable->sym_table->exitscope();
 }
@@ -513,21 +492,19 @@ void block_class::check_type(ClassTable* classtable, Class_ c) {
 
 void let_class::check_type(ClassTable* classtable, Class_ c) {
   if (identifier == self) {
-    classtable->semant_error(c)
-        << "'self' cannot be bound in a 'let' expression.\n";
+    ECHO_ERR1(c, "'self' cannot be bound in a 'let' expression");
     set_type(Object);
     return;
   }
   classtable->sym_table->enterscope();
-  classtable->sym_table->addid(identifier->get_string(), type_decl);
+  classtable->sym_table->addid(identifier, type_decl);
   init->check_type(classtable, c);
   if (init->get_type() != No_type) {
     Symbol lca = classtable->get_lca(type_decl, init->get_type());
     if (type_decl != SELF_TYPE && type_decl != lca) {
-      classtable->semant_error(c)
-          << "Inferred type " << type_decl << " of initialization of "
-          << identifier << " does not conform to identifier's declared type "
-          << init->get_type() << ".\n";
+      ECHO_ERR6(c, "Inferred type ", type_decl, " of initialization of ",
+                identifier, " does not conform to identifier's declared type ",
+                init->get_type());
     }
   }
   body->check_type(classtable, c);
@@ -535,13 +512,12 @@ void let_class::check_type(ClassTable* classtable, Class_ c) {
   set_type(body->get_type());
 }
 
-#define ARTH_CHECK_TYPE(op)                                                \
-  e1->check_type(classtable, c);                                           \
-  e2->check_type(classtable, c);                                           \
-  if (!(e1->get_type() == Int && e2->get_type() == Int)) {                 \
-    classtable->semant_error(c) << "non-Int arguments: " << e1->get_type() \
-                                << op << e2->get_type() << "\n";           \
-  }                                                                        \
+#define ARTH_CHECK_TYPE(op)                                                  \
+  e1->check_type(classtable, c);                                             \
+  e2->check_type(classtable, c);                                             \
+  if (!(e1->get_type() == Int && e2->get_type() == Int)) {                   \
+    ECHO_ERR4(c, "non-Int arguments: ", e1->get_type(), op, e2->get_type()); \
+  }                                                                          \
   set_type(e1->get_type());
 
 void plus_class::check_type(ClassTable* classtable, Class_ c) {
@@ -564,25 +540,23 @@ void neg_class::check_type(ClassTable* classtable, Class_ c) {
   e1->check_type(classtable, c);
   Symbol e1_type = e1->get_type();
   if (e1_type != Bool && e1_type != Int) {
-    classtable->semant_error(c) << "neg_expr is not  Boolean or Int";
+    ECHO_ERR1(c, "neg_expr is not  Boolean or Int");
   }
   set_type(e1->get_type());
 }
 
-#define COMPARE_CHECK_TYPE                                                 \
-  e1->check_type(classtable, c);                                           \
-  e2->check_type(classtable, c);                                           \
-  Symbol e1_type = e1->get_type();                                         \
-  Symbol e2_type = e2->get_type();                                         \
-  if (is_basic_class(e1_type) && is_basic_class(e1_type)) {                \
-    if (e1_type != e2_type) {                                              \
-      classtable->semant_error(c)                                          \
-          << "Illegal comparison with a basic type.\n";                    \
-    }                                                                      \
-  } else {                                                                 \
-    Symbol lca_class =                                                     \
-        classtable->get_lca(e1_type->get_string(), e2_type->get_string()); \
-  }                                                                        \
+#define COMPARE_CHECK_TYPE                                    \
+  e1->check_type(classtable, c);                              \
+  e2->check_type(classtable, c);                              \
+  Symbol e1_type = e1->get_type();                            \
+  Symbol e2_type = e2->get_type();                            \
+  if (is_basic_class(e1_type) && is_basic_class(e1_type)) {   \
+    if (e1_type != e2_type) {                                 \
+      ECHO_ERR1(c, "Illegal comparison with a basic type");   \
+    }                                                         \
+  } else {                                                    \
+    Symbol lca_class = classtable->get_lca(e1_type, e2_type); \
+  }                                                           \
   set_type(Bool);
 
 void lt_class::check_type(ClassTable* classtable, Class_ c) {
@@ -617,11 +591,10 @@ void string_const_class::check_type(ClassTable* classtable, Class_ c) {
 void new__class::check_type(ClassTable* classtable, Class_ c) {
   if (type_name == SELF_TYPE) {
     set_type(SELF_TYPE);
-  } else if (classtable->find(type_name->get_string())) {
+  } else if (classtable->find(type_name)) {
     set_type(type_name);
   } else {
-    classtable->semant_error(c) << "'new' used with undefined class "
-                                << type_name << ".\n";
+    ECHO_ERR2(c, "'new' used with undefined class ", type_name);
     set_type(Object);
   }
 }
@@ -636,11 +609,11 @@ void no_expr_class::check_type(ClassTable* classtable, Class_ c) {
 }
 
 void object_class::check_type(ClassTable* classtable, Class_ c) {
-  Symbol type_sym = classtable->sym_table->lookup(string(name->get_string()));
+  Symbol type_sym = classtable->sym_table->lookup(name);
   if (name == self) {
     set_type(SELF_TYPE);
   } else if (!type_sym) {
-    classtable->semant_error(c) << "Undeclared identifier " << name << ".\n";
+    ECHO_ERR2(c, "Undeclared identifier ", name);
     set_type(No_type);
   } else {
     set_type(type_sym);
@@ -678,12 +651,12 @@ void install_basic_classinfo(ClassTable* classtable) {
     class_info.parent = Object;
     // Object copy
     class_info.func_table.insert(
-        make_pair(copy->get_string(), make_pair(SELF_TYPE, build_symbols())));
+        make_pair(copy, make_pair(SELF_TYPE, build_symbols())));
 
     // Object abort
-    class_info.func_table.insert(make_pair(cool_abort->get_string(),
-                                           make_pair(Object, build_symbols())));
-    classtable->insert(Object->get_string(), class_info);
+    class_info.func_table.insert(
+        make_pair(cool_abort, make_pair(Object, build_symbols())));
+    classtable->insert(Object, class_info);
   }
 
   // IO
@@ -693,19 +666,19 @@ void install_basic_classinfo(ClassTable* classtable) {
     class_info.parent = Object;
 
     // out_int
-    class_info.func_table.insert(make_pair(
-        out_int->get_string(), make_pair(SELF_TYPE, build_symbols(Int))));
+    class_info.func_table.insert(
+        make_pair(out_int, make_pair(SELF_TYPE, build_symbols(Int))));
     // out_string
-    class_info.func_table.insert(make_pair(
-        out_string->get_string(), make_pair(SELF_TYPE, build_symbols(Str))));
+    class_info.func_table.insert(
+        make_pair(out_string, make_pair(SELF_TYPE, build_symbols(Str))));
     // in_int
     class_info.func_table.insert(
-        make_pair(in_int->get_string(), make_pair(Int, build_symbols())));
+        make_pair(in_int, make_pair(Int, build_symbols())));
 
     // in_string
     class_info.func_table.insert(
-        make_pair(in_string->get_string(), make_pair(Str, build_symbols())));
-    classtable->insert(IO->get_string(), class_info);
+        make_pair(in_string, make_pair(Str, build_symbols())));
+    classtable->insert(IO, class_info);
   }
 
   // Str
@@ -714,12 +687,12 @@ void install_basic_classinfo(ClassTable* classtable) {
     class_info.name = Str;
     class_info.parent = Object;
     class_info.func_table.insert(
-        make_pair(length->get_string(), make_pair(Int, build_symbols())));
-    class_info.func_table.insert(make_pair(
-        substr->get_string(), make_pair(Str, build_symbols(Int, Int))));
+        make_pair(length, make_pair(Int, build_symbols())));
     class_info.func_table.insert(
-        make_pair(concat->get_string(), make_pair(Str, build_symbols(Str))));
-    classtable->insert(Str->get_string(), class_info);
+        make_pair(substr, make_pair(Str, build_symbols(Int, Int))));
+    class_info.func_table.insert(
+        make_pair(concat, make_pair(Str, build_symbols(Str))));
+    classtable->insert(Str, class_info);
   }
 
   // Int
@@ -727,8 +700,7 @@ void install_basic_classinfo(ClassTable* classtable) {
     ClassInfo class_info;
     class_info.name = Int;
     class_info.parent = Object;
-    classtable->insert(SELF_TYPE->get_string(), class_info);
-    classtable->insert(Int->get_string(), class_info);
+    classtable->insert(Int, class_info);
   }
 
   // Bool
@@ -736,8 +708,7 @@ void install_basic_classinfo(ClassTable* classtable) {
     ClassInfo class_info;
     class_info.name = Bool;
     class_info.parent = Object;
-    classtable->insert(SELF_TYPE->get_string(), class_info);
-    classtable->insert(Bool->get_string(), class_info);
+    classtable->insert(Bool, class_info);
   }
 
   // SELF_TYPE
@@ -745,11 +716,11 @@ void install_basic_classinfo(ClassTable* classtable) {
     ClassInfo class_info;
     class_info.name = SELF_TYPE;
     class_info.parent = Object;
-    classtable->insert(SELF_TYPE->get_string(), class_info);
+    classtable->insert(SELF_TYPE, class_info);
   }
 }
 
-void __semant(ClassTable* classtable, Classes classes) {
+static void __semant(ClassTable* classtable, Classes classes) {
   Symbol builtin_name_sym[] = {Object, IO, Int, Str, Bool, SELF_TYPE};
   int n = sizeof(builtin_name_sym) / sizeof(builtin_name_sym[0]);
   bool found_main = false;
@@ -762,19 +733,18 @@ void __semant(ClassTable* classtable, Classes classes) {
     class_info.name = class_->get_name();
     class_info.parent = class_->get_parent();
     class_->collect_feature(&class_info);
+
     int id = in_basic_class(class_name, builtin_name_sym, n);
-    if (classtable->find(class_name->get_string())) {
+    if (classtable->find(class_name)) {
       // Redefine class
-      classtable->semant_error(class_) << "Class " << class_name
-                                       << " was previously defined.\n";
+      ECHO_ERR3(class_, "Class ", class_name, " was previously defined");
       return;
     } else if (id != -1) {
       // Redefine basic class
-      classtable->semant_error(class_) << "Redefinition of basic class "
-                                       << class_name << ".\n";
+      ECHO_ERR2(class_, "Redefinition of basic class ", class_name);
       return;
     } else {
-      classtable->insert(class_name->get_string(), class_info);
+      classtable->insert(class_name, class_info);
     }
   }
 
@@ -785,21 +755,18 @@ void __semant(ClassTable* classtable, Classes classes) {
     Symbol parent_name = class_->get_parent();
     int pid = in_basic_class(parent_name, builtin_name_sym, n);
     if (pid > 1) {
-      classtable->semant_error(class_)
-          << "Class " << class_name << " cannot inherit class " << parent_name
-          << ".\n";
+      ECHO_ERR4(class_, "Class ", class_name, " cannot inherit class ",
+                parent_name);
       return;
-    } else if (pid == -1 && !classtable->find(parent_name->get_string())) {
-      classtable->semant_error(class_) << "Class " << class_name
-                                       << " inherits from an undefined class "
-                                       << parent_name << ".\n";
+    } else if (pid == -1 && !classtable->find(parent_name)) {
+      ECHO_ERR4(class_, "Class ", class_name,
+                " inherits from an undefined class ", parent_name);
       return;
     }
   }
 
   // No Main class.
-  static const string& mainclass = "Main";
-  if (!classtable->find(mainclass)) {
+  if (!classtable->find(Main)) {
     classtable->semant_error() << "Class Main is not defined.\n";
     return;
   }
@@ -813,20 +780,17 @@ void __semant(ClassTable* classtable, Classes classes) {
   }
 }
 
-// ** NOTICE **: all symbol is in a memory pool.
+// ** NOTICE **: all symbol are in same idtable.
 // Two token shared same symbol if they are same type.
-// So they can compare with != or ==.
+// So they can compare with each other by != or ==.
 void program_class::semant() {
   initialize_constants();
 
-  /* ClassTable constructor may do some semantic analysis */
   ClassTable* classtable = new ClassTable(classes);
 
-  /* some semantic analysis code may go here */
   __semant(classtable, classes);
   if (classtable->errors()) {
     cerr << "Compilation halted due to static semantic errors." << endl;
     exit(1);
   }
 }
-

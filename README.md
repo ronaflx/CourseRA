@@ -15,3 +15,5 @@ Functional Programming Principles in Scala@Eole Polytechnique Federale de Lausan
 Machine Learning@Stanford
 
 CS193P@Stanford
+
+An Introduction to Interactive Programming in Python@Rice

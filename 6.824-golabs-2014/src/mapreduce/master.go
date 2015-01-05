@@ -3,7 +3,6 @@ package mapreduce
 import "container/list"
 import "fmt"
 import "strconv"
-import "time"
 
 type WorkerInfo struct {
 	address string
@@ -28,16 +27,17 @@ func (mr *MapReduce) KillWorkers() *list.List {
 }
 
 func requestWorker(mr *MapReduce, args *DoJobArgs, channel *chan int) {
-	workerId := 0
 	for {
+		workerId := <-mr.workerChannel
+		fmt.Printf("workerId: %d, jobId: %d\n", workerId, args.JobNumber)
 		w := mr.Workers[strconv.Itoa(workerId)]
 		var reply DoJobReply
+		fmt.Printf("%d job call\n", args.JobNumber)
 		ok := call(w.address, "Worker.DoJob", args, &reply)
+		mr.workerChannel <- workerId
 		if reply.OK && ok {
 			*channel <- args.JobNumber
 			break
-		} else {
-			workerId = (workerId + 1) % mr.nWorker
 		}
 	}
 }
@@ -47,17 +47,15 @@ func (mr *MapReduce) RunMaster() *list.List {
 	// Every mapper has been registered.
 	finishedMapper := make(chan int)
 	finishedRecuder := make(chan int)
+
 	go func() {
+		nWorker := 0
 		for workerName := range mr.registerChannel {
-			mr.Workers[strconv.Itoa(mr.nWorker)] = &WorkerInfo{workerName}
-			mr.nWorker++
+			mr.Workers[strconv.Itoa(nWorker)] = &WorkerInfo{workerName}
+			mr.workerChannel <- nWorker
+			nWorker++
 		}
 	}()
-
-	// Wait until at least one worker.
-	for mr.nWorker == 0 {
-		time.Sleep(time.Microsecond * 50)
-	}
 
 	// Send mapper job request to worker.
 	for i := 0; i < mr.nMap; i++ {

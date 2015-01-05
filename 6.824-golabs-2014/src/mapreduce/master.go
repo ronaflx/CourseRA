@@ -26,27 +26,32 @@ func (mr *MapReduce) KillWorkers() *list.List {
 	return l
 }
 
+// We need to produce(release) the work in other goroutine, since "channel" is
+// blocking-IO.
+func releaseWorker(mr *MapReduce, workerId int) {
+	mr.workerChannel <- workerId
+}
+
 func requestWorker(mr *MapReduce, args *DoJobArgs, channel *chan int) {
 	for {
 		workerId := <-mr.workerChannel
-		fmt.Printf("workerId: %d, jobId: %d\n", workerId, args.JobNumber)
 		w := mr.Workers[strconv.Itoa(workerId)]
 		var reply DoJobReply
-		fmt.Printf("%d job call\n", args.JobNumber)
 		ok := call(w.address, "Worker.DoJob", args, &reply)
-		mr.workerChannel <- workerId
 		if reply.OK && ok {
 			*channel <- args.JobNumber
+			mr.workerChannel <- workerId
 			break
 		}
+		go releaseWorker(mr, workerId)
 	}
 }
 
 func (mr *MapReduce) RunMaster() *list.List {
 	// Your code here
 	// Every mapper has been registered.
-	finishedMapper := make(chan int)
-	finishedRecuder := make(chan int)
+	finishedMapper := make(chan int, mr.nMap)
+	finishedRecuder := make(chan int, mr.nReduce)
 
 	go func() {
 		nWorker := 0

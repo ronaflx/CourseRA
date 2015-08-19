@@ -45,7 +45,6 @@ static CgenNodeP LookupCgenNode(Symbol symbol) {
   return classnode_table.find(symbol)->second;
 }
 
-
 //
 // Three symbols from the semantic analyzer (semant.cc) are used.
 // If e : No_type, then no code is generated for e.

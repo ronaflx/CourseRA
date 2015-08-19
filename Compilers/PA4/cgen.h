@@ -104,6 +104,7 @@ public:
 
    int lookup_method_offset(Symbol name) { return *method_offset.lookup(name); }
    int lookup_attrib_offset(Symbol name) { return *attrib_offset.lookup(name); }
+
    int get_class_tag() { return class_tag; }
    int get_child_tag() { return child_tag; }
 };

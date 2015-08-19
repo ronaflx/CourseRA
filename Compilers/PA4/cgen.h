@@ -71,6 +71,7 @@ private:
    // define by ronaflx
    int gc_tag;
    int class_tag;
+   int child_tag;
    int attrib_size;
    int method_size;
    List<Entry>* method_name;                 // unique method name for each class
@@ -103,10 +104,11 @@ public:
 
    int lookup_method_offset(Symbol name) { return *method_offset.lookup(name); }
    int lookup_attrib_offset(Symbol name) { return *attrib_offset.lookup(name); }
-   int get_class_tag() { return class_tag; };
+   int get_class_tag() { return class_tag; }
+   int get_child_tag() { return child_tag; }
 };
 // skip boolclasstag, stringclasstag and intclasstag.
-int CgenNode::global_class_tag = 3;
+int CgenNode::global_class_tag = 0;
 
 class BoolConst 
 {

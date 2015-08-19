@@ -41,6 +41,10 @@ static CgenNodeP cur_node = NULL;
 static std::map<Symbol, CgenNodeP> classnode_table;
 const int DEFAULT_FP_OFFSET = 3;
 
+static CgenNodeP LookupCgenNode(Symbol symbol) {
+  return classnode_table.find(symbol)->second;
+}
+
 
 //
 // Three symbols from the semantic analyzer (semant.cc) are used.
@@ -401,7 +405,7 @@ static void emit_init_call(Symbol class_name, ostream& s) {
   s << endl;
 }
 
-static void emit_null_object(int label, int lineno, Symbol name, char* abort_prog, ostream& s) {
+static void emit_abort(int label, int lineno, Symbol name, char* abort_prog, ostream& s) {
   emit_bne(ACC, ZERO, label, s);
   emit_load_string(ACC, stringtable.lookup_string(name->get_string()), s);
   emit_load_imm(T1, lineno, s);
@@ -680,16 +684,16 @@ static bool SortedByClassTag(const CgenNodeP& a, const CgenNodeP& b) {
 
 CgenClassTable::CgenClassTable(Classes classes, ostream& s) : nds(NULL) , str(s)
 {
-   stringclasstag = 0  /* Change to your String class tag here */;
-   intclasstag    = 1  /* Change to your Int class tag here */;
-   boolclasstag   = 2  /* Change to your Bool class tag here */;
-
    enterscope();
    if (cgen_debug) cout << "Building CgenClassTable" << endl;
    install_basic_classes();
    install_classes(classes);
    build_inheritance_tree();
    root()->traversal();
+
+   stringclasstag = LookupCgenNode(Str )->get_class_tag();
+   intclasstag    = LookupCgenNode(Int )->get_class_tag();
+   boolclasstag   = LookupCgenNode(Bool)->get_class_tag();
 
    // Push all nodes into a vector and sorted by class_tag.
    std::queue<CgenNodeP> node_queue;
@@ -911,15 +915,7 @@ void CgenNode::set_parentnd(CgenNodeP p)
 void CgenNode::traversal() {
   Entry* name = get_name();
   classnode_table.insert(std::make_pair(name, this));
-  if (name == Str) {
-    class_tag = 0;
-  } else if (name == Int) {
-    class_tag = 1;
-  } else if (name == Bool) {
-    class_tag = 2;
-  } else {
-    class_tag = global_class_tag++;
-  }
+  class_tag = global_class_tag++;
   // Object doesn't have a parent class.
   if (parentnd != NULL) {
     attrib_size = parentnd->attrib_size;
@@ -958,6 +954,7 @@ void CgenNode::traversal() {
   for (List<CgenNode>* head = children; head != NULL; head = head->tl()) {
     head->hd()->traversal();
   }
+  child_tag = global_class_tag - 1;
 }
 
 // -1 eye catcher
@@ -1192,6 +1189,7 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct) :
    basic_status(bstatus),
    gc_tag(0),
    class_tag(0),
+   child_tag(0),
    attrib_size(0),
    method_size(0),
    method_name(NULL)
@@ -1258,11 +1256,11 @@ void static_dispatch_class::code(ostream &s) {
   }
   expr->code(s);
 
-  const int not_null_label = static_label++;
-  emit_null_object(not_null_label, line_number, cur_node->filename, "_dispatch_abort", s);
-  emit_label_def(not_null_label, s);
+  const int good_label = static_label++;
+  emit_abort(good_label, line_number, cur_node->filename, "_dispatch_abort", s);
+  emit_label_def(good_label, s);
 
-  CgenNodeP node = classnode_table.find(type_name)->second;
+  CgenNodeP node = LookupCgenNode(type_name);
   int offset_disptable = node->lookup_method_offset(name);
   emit_move_protobj(T1, type_name, s);
   emit_load(T1, DISPTABLE_OFFSET, T1, s);  // dispatch table.
@@ -1279,7 +1277,7 @@ void dispatch_class::code(ostream &s) {
   expr->code(s);
 
   const int not_null_label = static_label++;
-  emit_null_object(not_null_label, line_number, cur_node->filename, "_dispatch_abort", s);
+  emit_abort(not_null_label, line_number, cur_node->filename, "_dispatch_abort", s);
   emit_label_def(not_null_label, s);
 
   Symbol expr_type = expr->get_type();
@@ -1287,7 +1285,7 @@ void dispatch_class::code(ostream &s) {
   if (expr_type == SELF_TYPE) {
     node = cur_node;
   } else {
-    node = classnode_table.find(expr_type)->second;
+    node = LookupCgenNode(expr_type);
   }
 
   int offset_disptable = node->lookup_method_offset(name);
@@ -1332,14 +1330,65 @@ void loop_class::code(ostream &s) {
 
 void typcase_class::code(ostream &s) {
   expr->code(s);
+  emit_push(ACC, s);
+  local_variable++;
 
-  const int not_null_label = static_label++;
-  emit_null_object(not_null_label, line_number, cur_node->filename, "_case_abort2", s);
-  emit_label_def(not_null_label, s);
-
-  Symbol expr_type = expr->get_type();
+  // Push all case var into local variable table with same address.
+  frame_offset.enterscope();
   for (int i = cases->first(); cases->more(i);i = cases->next(i)) {
+    const int frame_pos = -local_variable - DEFAULT_FP_OFFSET;
+    frame_offset.addid(cases->nth(i)->get_name(), new int(frame_pos));
   }
+
+  // abort the programm if the expr is void.
+  const int good_label = static_label++;
+  emit_abort(good_label, line_number, cur_node->filename, "_case_abort2", s);
+  emit_label_def(good_label, s);
+
+  // Sort all cases node by class_tag.
+  std::vector<CgenNodeP> branchs;
+  std::map<CgenNodeP, Case_class*> expr_mapping;
+  for (int i = cases->first(); cases->more(i);i = cases->next(i)) {
+    CgenNodeP node = LookupCgenNode(cases->nth(i)->get_type_decl());
+    branchs.push_back(node);
+    expr_mapping[node] = cases->nth(i);
+  }
+  std::sort(branchs.begin(), branchs.end(), SortedByClassTag);
+
+  // Case match algorithm:
+  // for each case statement we can have a tag range.
+  // compare statement tag range with dynamic class tag.
+  Symbol expr_type = expr->get_type();
+  const int matched_label = static_label++;
+  const int n = static_cast<int>(branchs.size());
+  for (int i = n - 1; i >= 0; i--) {
+    const int outside_label = static_label++;
+    Case_class* case_node = expr_mapping[branchs[i]];
+    CgenNodeP cgen_node   = LookupCgenNode(case_node->get_type_decl());
+
+    emit_load_protobj(T2, case_node->get_type_decl(), s);
+    emit_load(T2, TAG_OFFSET, T2, s);
+
+    emit_load(T1, 1, SP, s);
+    emit_load(T1, TAG_OFFSET, T1, s);
+    emit_blti(T1, cgen_node->get_class_tag(), outside_label, s);
+    emit_bgti(T1, cgen_node->get_child_tag(), outside_label, s);
+
+    case_node->get_expression()->code(s);
+    emit_branch(matched_label, s);
+    emit_label_def(outside_label, s);
+  }
+
+  // non matched abort.
+  emit_load(ACC, 1, SP, s);
+  emit_load_imm(T1, line_number, s);
+  emit_jal("_case_abort", s);
+
+  emit_label_def(matched_label, s);
+
+  frame_offset.exitscope();
+  emit_pop(s);
+  local_variable--;
 }
 
 void block_class::code(ostream &s) {

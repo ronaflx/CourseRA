@@ -147,6 +147,21 @@ void branch_class::dump(ostream& stream, int n)
 }
 
 
+Symbol branch_class::get_name() {
+  return name;
+}
+
+
+Symbol branch_class::get_type_decl() {
+  return type_decl;
+}
+
+
+Expression branch_class::get_expression() {
+  return expr;
+}
+
+
 Expression assign_class::copy_Expression()
 {
    return new assign_class(copy_Symbol(name), expr->copy_Expression());
